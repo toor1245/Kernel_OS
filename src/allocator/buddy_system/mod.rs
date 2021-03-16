@@ -1,3 +1,3 @@
-mod buddy_alloc;
-mod buddy_manager;
-mod memory;
+pub mod buddy_manager;
+pub mod linked_list;
+pub mod frame;

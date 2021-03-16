@@ -16,9 +16,8 @@ mod serial;
 mod gdt;
 mod interrupts;
 mod memory;
-mod calculator;
 
-use crate::allocator::alloc::Locked;
+use crate::allocator::alloc::{Locked, HEAP_SIZE};
 use crate::allocator::list::Allocator;
 use crate::memory::memory_management::BootInfoFrameAllocator;
 
@@ -29,11 +28,13 @@ use x86_64::instructions::port::Port;
 use x86_64::structures::paging::{PageTable, Page, Translate};
 use alloc::{boxed::Box, vec, vec::Vec, rc::Rc};
 use core::panic::PanicInfo;
-use crate::calculator::display::*;
 use crate::allocator::bump_allocator::BumpAllocator;
+use crate::allocator::buddy_system::buddy_manager::LockedHeap;
+use crate::allocator::buddy_system::linked_list;
+use crate::allocator::buddy_system::frame::FrameAllocator;
 
 #[global_allocator]
-static ALLOCATOR: Locked<Allocator> = Locked::new(Allocator::new());
+static ALLOCATOR: LockedHeap = LockedHeap::empty();
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u32)]
@@ -57,9 +58,6 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     use x86_64::VirtAddr;
     use x86_64::registers::control::Cr3;
 
-    display_menu();
-
-    println!("Hello fucking World{}", "!");
     interrupts::init_idt();
     gdt::gdt_init();
     unsafe {
@@ -82,6 +80,7 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     }
     println!("vec at {:p}", vec.as_slice());
     println!("Press any key to reload screen...");
+
 
     #[cfg(test)]
         test_main();
@@ -124,6 +123,61 @@ fn first_test() {
     assert_eq!(x, y);
     serial_println!("x: {} == y: {}", x, y);
     serial_println!("[ok]");
+}
+
+#[test_case]
+fn test_frame_allocator_alloc_and_free_complex() {
+    let mut frame = FrameAllocator::new();
+    frame.add_frame(100, 1024);
+    for _ in 0..10 {
+        let addr = frame.alloc(1).unwrap();
+        frame.dealloc(addr, 1);
+    }
+    let addr1 = frame.alloc(1).unwrap();
+    let addr2 = frame.alloc(1).unwrap();
+    assert_ne!(addr1, addr2);
+    serial_println!("[ok]")
+}
+
+#[test_case]
+fn simple_allocation() {
+    let heap_value_1 = Box::new(41);
+    let heap_value_2 = Box::new(13);
+    assert_eq!(*heap_value_1, 41);
+    assert_eq!(*heap_value_2, 13);
+    serial_println!("[ok]")
+}
+
+#[test_case]
+fn large_vec() {
+    let n = 1000;
+    let mut vec = Vec::new();
+    for i in 0..n {
+        vec.push(i);
+    }
+    assert_eq!(vec.iter().sum::<u64>(), (n - 1) * n / 2);
+    serial_println!("[ok]")
+}
+
+#[test_case]
+fn many_boxes() {
+    for i in 0..HEAP_SIZE {
+        let x = Box::new(i);
+        assert_eq!(*x, i);
+    }
+    serial_println!("[ok]")
+}
+
+#[test_case]
+fn many_boxes_long_lived() {
+    let long_lived = Box::new(1);
+    for i in 0..HEAP_SIZE {
+        let x = Box::new(i);
+        assert_eq!(*x, i);
+    }
+    serial_println!("{}", ALLOCATOR.lock().stats_alloc_actual());
+    assert_eq!(*long_lived, 1);
+    serial_println!("[ok]")
 }
 
 #[alloc_error_handler]
