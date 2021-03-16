@@ -1,0 +1,12 @@
+[unstable]
+build-std = ["core", "compiler_builtins", "alloc"]
+build-std-features = ["compiler-builtins-mem"]
+
+[build]
+target = "x86_64-os.json"
+
+[package.metadata.bootimage]
+run-args = ["-L", "/Users/XXX/Code/QEMU/pc-bios"]
+
+[target.'cfg(target_os = "none")']
+runner = "bootimage runner"

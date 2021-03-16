@@ -1,0 +1,2 @@
+qemu-system-x86_64 -drive format=raw,file=bootimage-operating_system.bin
+cargo bootimage
