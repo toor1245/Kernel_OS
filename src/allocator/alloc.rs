@@ -1,5 +1,5 @@
 pub const HEAP_START: usize = 0x_4444_4444_0000;
-pub const HEAP_SIZE: usize = 200 * 1024; // 200 KB
+pub const HEAP_SIZE: usize = 1 * 1024 * 1024; // 1 MB
 
 use x86_64::{
     structures::paging::{
@@ -7,7 +7,7 @@ use x86_64::{
     },
     VirtAddr,
 };
-use crate::ALLOCATOR;
+use crate::BUDDY_ALLOCATOR;
 use bootloader::BootInfo;
 
 pub fn init_heap(
@@ -34,7 +34,7 @@ pub fn init_heap(
     }
 
     unsafe {
-        ALLOCATOR.lock().init(HEAP_START, HEAP_SIZE);
+        BUDDY_ALLOCATOR.lock().init(HEAP_START, HEAP_SIZE);
     }
 
     Ok(())

@@ -1,32 +1,16 @@
 use core::alloc::{GlobalAlloc, Layout};
 use core::cmp::{max, min};
-use core::fmt;
+use core::{fmt, cmp};
 use core::mem::size_of;
 use core::ops::Deref;
 use core::ptr::NonNull;
+use core::ptr;
 use spin::Mutex;
 use crate::allocator::buddy_system::linked_list;
 use crate::serial_println;
 
 /// A heap that uses buddy system
-///
-/// # Usage
-///
 /// Create a heap and add a memory region to it:
-/// ```
-/// use buddy_system_allocator::*;
-/// # use core::mem::size_of;
-/// let mut heap = Heap::empty();
-/// # let space: [usize; 100] = [0; 100];
-/// # let begin: usize = space.as_ptr() as usize;
-/// # let end: usize = begin + 100 * size_of::<usize>();
-/// # let size: usize = 100 * size_of::<usize>();
-/// unsafe {
-///     heap.init(begin, size);
-///     // or
-///     heap.add_to_heap(begin, end);
-/// }
-/// ```
 pub struct Heap {
     // buddy system with max order of 32
     free_list: [linked_list::LinkedList; 32],
@@ -207,6 +191,11 @@ impl LockedHeap {
     pub const fn empty() -> LockedHeap {
         LockedHeap(Mutex::new(Heap::new()))
     }
+
+    /// Show memory usage in heap.
+    pub fn show(&self) {
+        serial_println!("{:#?}", self.0);
+    }
 }
 
 impl Deref for LockedHeap {
@@ -228,6 +217,18 @@ unsafe impl GlobalAlloc for LockedHeap {
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
         self.0.lock().dealloc(NonNull::new_unchecked(ptr), layout)
+    }
+
+    unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
+        let new_layout = unsafe { Layout::from_size_align_unchecked(new_size, layout.align()) };
+        let new_ptr = unsafe { self.alloc(new_layout) };
+        if !new_ptr.is_null() {
+            unsafe {
+                ptr::copy_nonoverlapping(ptr, new_ptr, cmp::min(layout.size(), new_size));
+                self.dealloc(ptr, layout);
+            }
+        }
+        new_ptr
     }
 }
 

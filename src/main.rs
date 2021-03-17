@@ -29,12 +29,15 @@ use x86_64::structures::paging::{PageTable, Page, Translate};
 use alloc::{boxed::Box, vec, vec::Vec, rc::Rc};
 use core::panic::PanicInfo;
 use crate::allocator::bump_allocator::BumpAllocator;
-use crate::allocator::buddy_system::buddy_manager::LockedHeap;
+use crate::allocator::buddy_system::buddy_manager::{LockedHeap, Heap};
 use crate::allocator::buddy_system::linked_list;
 use crate::allocator::buddy_system::frame::FrameAllocator;
+use core::alloc::Layout;
+use core::ptr::NonNull;
+use core::mem::size_of;
 
 #[global_allocator]
-static ALLOCATOR: LockedHeap = LockedHeap::empty();
+static BUDDY_ALLOCATOR: LockedHeap = LockedHeap::empty();
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u32)]
@@ -126,7 +129,110 @@ fn first_test() {
 }
 
 #[test_case]
+fn test_empty_heap() {
+    serial_println!("[Test]: test_empty_heap");
+    let mut heap = Heap::new();
+    assert!(heap.alloc(Layout::from_size_align(1, 1).unwrap()).is_err());
+    serial_println!("[ok]");
+    serial_println!();
+}
+
+#[test_case]
+fn test_heap_add() {
+    serial_println!("[Test]: heap_add");
+    let mut heap = Heap::new();
+    assert!(heap.alloc(Layout::from_size_align(1, 1).unwrap()).is_err());
+
+    let space: [usize; 100] = [0; 100];
+    unsafe {
+        heap.add_to_heap(space.as_ptr() as usize, space.as_ptr().add(100) as usize);
+    }
+    let addr = heap.alloc(Layout::from_size_align(1, 1).unwrap());
+    assert!(addr.is_ok());
+    serial_println!("[ok]");
+    serial_println!();
+}
+
+#[test_case]
+fn test_heap_oom() {
+    serial_println!("[Test]: heap_oom");
+    let mut heap = Heap::new();
+    let space: [usize; 100] = [0; 100];
+    unsafe {
+        heap.add_to_heap(space.as_ptr() as usize, space.as_ptr().add(100) as usize);
+    }
+
+    assert!(heap
+        .alloc(Layout::from_size_align(100 * size_of::<usize>(), 1).unwrap())
+        .is_err());
+    assert!(heap.alloc(Layout::from_size_align(1, 1).unwrap()).is_ok());
+    serial_println!("[ok]");
+    serial_println!();
+}
+
+
+#[test_case]
+fn test_heap_alloc_and_free() {
+    serial_println!("[Test]: heap_alloc_and_free");
+    let mut heap = Heap::new();
+    assert!(heap.alloc(Layout::from_size_align(1, 1).unwrap()).is_err());
+
+    let space: [usize; 100] = [0; 100];
+    unsafe {
+        heap.add_to_heap(space.as_ptr() as usize, space.as_ptr().add(100) as usize);
+    }
+    for _ in 0..100 {
+        let addr = heap.alloc(Layout::from_size_align(1, 1).unwrap()).unwrap();
+        heap.dealloc(addr, Layout::from_size_align(1, 1).unwrap());
+    }
+    serial_println!("[ok]");
+    serial_println!();
+}
+
+#[test_case]
+fn test_empty_frame_allocator() {
+    serial_println!("[Test]: empty_frame_allocator");
+    let mut frame = FrameAllocator::new();
+    assert!(frame.alloc(1).is_none());
+    serial_println!("[ok]");
+    serial_println!();
+}
+
+#[test_case]
+fn test_frame_allocator_add() {
+    serial_println!("[Test]: frame_allocator_add");
+    let mut frame = FrameAllocator::new();
+    assert!(frame.alloc(1).is_none());
+
+    frame.insert(0..3);
+    let num = frame.alloc(1);
+    assert_eq!(num, Some(2));
+    let num = frame.alloc(2);
+    assert_eq!(num, Some(0));
+    assert!(frame.alloc(1).is_none());
+    assert!(frame.alloc(2).is_none());
+    serial_println!("[ok]");
+    serial_println!();
+}
+
+#[test_case]
+fn test_frame_allocator_alloc_and_free() {
+    serial_println!("[Test]: frame_allocator_alloc_and_free");
+    let mut frame = FrameAllocator::new();
+    assert!(frame.alloc(1).is_none());
+
+    frame.add_frame(0, 1024);
+    for _ in 0..100 {
+        let addr = frame.alloc(512).unwrap();
+        frame.dealloc(addr, 512);
+    }
+    serial_println!("[ok]");
+    serial_println!();
+}
+
+#[test_case]
 fn test_frame_allocator_alloc_and_free_complex() {
+    serial_println!("[Test]: frame_allocator_alloc_and_free_complex");
     let mut frame = FrameAllocator::new();
     frame.add_frame(100, 1024);
     for _ in 0..10 {
@@ -141,17 +247,48 @@ fn test_frame_allocator_alloc_and_free_complex() {
 
 #[test_case]
 fn simple_allocation() {
+    serial_println!("[Test]: simple_allocation");
     let heap_value_1 = Box::new(41);
     let heap_value_2 = Box::new(13);
     assert_eq!(*heap_value_1, 41);
     assert_eq!(*heap_value_2, 13);
     serial_println!("{:p}", heap_value_1);
     serial_println!("{:p}", heap_value_2);
-    serial_println!("[ok]")
+    BUDDY_ALLOCATOR.show();
+    serial_println!("[ok]");
+    serial_println!();
+}
+
+#[test_case]
+fn small_vec() {
+    serial_println!("[Test]: small_vec");
+    let n = 10;
+    let mut vec = Vec::new();
+    for i in 0..n {
+        vec.push(i);
+    }
+    assert_eq!(vec.iter().sum::<u64>(), (n - 1) * n / 2);
+    serial_println!("{:p}", vec.as_slice());
+    unsafe {
+        let x = BUDDY_ALLOCATOR.lock().alloc(
+            Layout::from_size_align_unchecked(core::mem::size_of::<i32>() * 4, 8)).expect("allocation failed");
+        let mut x = x.as_ptr();
+        x.write(2);
+        x.add(3).write(10);
+        serial_println!("{:?}", x.as_ref());
+        serial_println!("{:?}", x.offset(3).as_ref());
+        let x = NonNull::new(x).expect("error");
+        BUDDY_ALLOCATOR.lock().dealloc(x, Layout::for_value(&x));
+        serial_println!("{:?}", x.as_ref());
+    }
+    BUDDY_ALLOCATOR.show();
+    serial_println!("[ok]");
+    serial_println!();
 }
 
 #[test_case]
 fn large_vec() {
+    serial_println!("[Test]: large_vec");
     let n = 1000;
     let mut vec = Vec::new();
     for i in 0..n {
@@ -159,28 +296,36 @@ fn large_vec() {
     }
     assert_eq!(vec.iter().sum::<u64>(), (n - 1) * n / 2);
     serial_println!("{:p}", vec.as_slice());
-    serial_println!("[ok]")
+    BUDDY_ALLOCATOR.show();
+    serial_println!("[ok]");
+    serial_println!();
 }
 
 #[test_case]
 fn many_boxes() {
+    serial_println!("[Test]: many_boxes");
     for i in 0..HEAP_SIZE {
         let x = Box::new(i);
         assert_eq!(*x, i);
     }
-    serial_println!("[ok]")
+    BUDDY_ALLOCATOR.show();
+    serial_println!("[ok]");
+    serial_println!();
 }
+
 
 #[test_case]
 fn many_boxes_long_lived() {
+    serial_println!("[Test]: many_boxes_long_lived");
     let long_lived = Box::new(1);
     for i in 0..HEAP_SIZE {
         let x = Box::new(i);
         assert_eq!(*x, i);
     }
-    serial_println!("{}", ALLOCATOR.lock().stats_alloc_actual());
     assert_eq!(*long_lived, 1);
-    serial_println!("[ok]")
+    BUDDY_ALLOCATOR.show();
+    serial_println!("[ok]");
+    serial_println!();
 }
 
 #[alloc_error_handler]
