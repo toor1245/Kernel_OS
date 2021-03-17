@@ -13,7 +13,6 @@ use bootloader::BootInfo;
 pub fn init_heap(
     mapper: &mut impl Mapper<Size4KiB>,
     frame_allocator: &mut impl FrameAllocator<Size4KiB>,
-    boot_info: &'static BootInfo
 ) -> Result<(), MapToError<Size4KiB>> {
     let page_range = {
         let heap_start = VirtAddr::new(HEAP_START as u64);

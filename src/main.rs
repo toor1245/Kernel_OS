@@ -72,7 +72,7 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     let mut mapper = unsafe { memory::memory_management::init(phys_mem_offset) };
     let mut frame_allocator = unsafe { BootInfoFrameAllocator::init(&boot_info.memory_map) };
 
-    allocator::alloc::init_heap(&mut mapper, &mut frame_allocator, &boot_info).expect("heap initialization failed");
+    allocator::alloc::init_heap(&mut mapper, &mut frame_allocator).expect("heap initialization failed");
 
     let heap_value = Box::new(41);
     println!("heap_value at {:p}", heap_value);
@@ -271,12 +271,16 @@ fn small_vec() {
     serial_println!("{:p}", vec.as_slice());
     unsafe {
         let x = BUDDY_ALLOCATOR.lock().alloc(
-            Layout::from_size_align_unchecked(core::mem::size_of::<i32>() * 4, 8)).expect("allocation failed");
+            Layout::from_size_align_unchecked(core::mem::size_of::<i32>() * 4, 1)).expect("allocation failed");
         let mut x = x.as_ptr();
         x.write(2);
         x.add(3).write(10);
+        
         serial_println!("{:?}", x.as_ref());
         serial_println!("{:?}", x.offset(3).as_ref());
+
+        assert_eq!(x.as_ref(), 2);
+        assert_eq!(x.offset(3).as_ref(), 10);
         let x = NonNull::new(x).expect("error");
         BUDDY_ALLOCATOR.lock().dealloc(x, Layout::for_value(&x));
         serial_println!("{:?}", x.as_ref());
