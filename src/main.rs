@@ -145,6 +145,8 @@ fn simple_allocation() {
     let heap_value_2 = Box::new(13);
     assert_eq!(*heap_value_1, 41);
     assert_eq!(*heap_value_2, 13);
+    serial_println!("{:p}", heap_value_1);
+    serial_println!("{:p}", heap_value_2);
     serial_println!("[ok]")
 }
 
@@ -156,6 +158,7 @@ fn large_vec() {
         vec.push(i);
     }
     assert_eq!(vec.iter().sum::<u64>(), (n - 1) * n / 2);
+    serial_println!("{:p}", vec.as_slice());
     serial_println!("[ok]")
 }
 

@@ -32,12 +32,12 @@ impl FrameAllocator {
         let mut current_start = start;
 
         while current_start < end {
-            let low_bit = if current_start > 0 {
+            let lowbit = if current_start > 0 {
                 current_start & (!current_start + 1)
             } else {
                 32
             };
-            let size = min(low_bit, prev_power_of_two(end - current_start));
+            let size = min(lowbit, prev_power_of_two(end - current_start));
             total += size;
 
             self.free_list[size.trailing_zeros() as usize].insert(current_start);

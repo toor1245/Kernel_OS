@@ -6,6 +6,7 @@ use core::ops::Deref;
 use core::ptr::NonNull;
 use spin::Mutex;
 use crate::allocator::buddy_system::linked_list;
+use crate::serial_println;
 
 /// A heap that uses buddy system
 ///
@@ -90,11 +91,10 @@ impl Heap {
             // Find the first non-empty size class
             if !self.free_list[i].is_empty() {
                 // Split buffers
-                for j in (class + 1..i + 1).rev() {
+                for j in (class + 1 .. i + 1).rev() {
                     if let Some(block) = self.free_list[j].pop() {
                         unsafe {
-                            self.free_list[j - 1]
-                                .push((block as usize + (1 << (j - 1))) as *mut usize);
+                            self.free_list[j - 1].push((block as usize + (1 << (j - 1))) as *mut usize);
                             self.free_list[j - 1].push(block);
                         }
                     } else {
@@ -175,6 +175,11 @@ impl Heap {
     /// Return the total number of bytes in the heap
     pub fn stats_total_bytes(&self) -> usize {
         self.total
+    }
+
+    /// Return status of used block
+    pub fn is_used(&self) -> bool {
+        self.allocated == 0
     }
 }
 
